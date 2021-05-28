@@ -57,12 +57,10 @@ export const onCreateUser = functions.auth.user().onCreate(async (user) => {
             successLog(`New User email: ${user.email}`, onCreateUser.name);
         });
 
-    collection("users-simple-infos")
-        .doc("infos")
-        .update({
-            [`${user.uid}.name`]: name,
-            [`${user.uid}.onlineTimestamp`]: Date.now(),
-        });
+    collection("users-simple-infos").doc(user.uid).set({
+        name: name,
+        onlineTimestamp: Date.now(),
+    });
 }); // onCreateUser()
 
 /** 取得使用者資訊 */
@@ -74,7 +72,7 @@ export const getUserInfo = functions.https.onCall(async (data, context) => {
         userName: "",
     };
 
-    if (auth === false) {
+    if (auth === false || typeof context.auth?.uid === "undefined") {
         return resultError(errorNames.authErrorList.unauthenticated, user);
     }
 
@@ -84,11 +82,9 @@ export const getUserInfo = functions.https.onCall(async (data, context) => {
         if (doc.exists) {
             const data = doc.data() || false;
 
-            collection("users-simple-infos")
-                .doc("infos")
-                .update({
-                    [`${context.auth?.uid}.onlineTimestamp`]: Date.now(),
-                });
+            collection("users-simple-infos").doc(context.auth.uid).update({
+                onlineTimestamp: Date.now(),
+            });
 
             if (data !== false) {
                 const userInfo = data as User;
@@ -111,16 +107,14 @@ export const updateOnlineTime = functions.https.onCall(
     async (data, context) => {
         const auth = authVerification(context);
 
-        if (auth === false) {
+        if (auth === false || typeof context.auth?.uid === "undefined") {
             return resultError(errorNames.authErrorList.unauthenticated, null);
         }
 
         try {
-            collection("users-simple-infos")
-                .doc("infos")
-                .update({
-                    [`${context.auth?.uid}.onlineTimestamp`]: Date.now(),
-                });
+            collection("users-simple-infos").doc(context.auth.uid).update({
+                onlineTimestamp: Date.now(),
+            });
             return resultOk(null);
         } catch (e) {
             errorLog(`updateOnlineTime: #1 ${e}`, updateOnlineTime.name);
