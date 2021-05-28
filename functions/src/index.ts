@@ -1,10 +1,9 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { successLog, errorLog } from "./common/log";
-import { authVerification } from "./common/auth";
+import { verificationDataFields, authVerification } from "./common/auth";
 import * as errorNames from "./common/errorNames";
 import { resultOk, resultError } from "./common/result";
-// import { verificationDataFields, authVerification } from "./common/auth";
 // import { resultOk, resultError, Result } from "./common/result";
 admin.initializeApp();
 
@@ -101,7 +100,7 @@ export const getUserInfo = functions.https.onCall(async (data, context) => {
             }
         }
     } catch (e) {
-        errorLog(`_getUserInfo: #1 ${e}`, getUserInfo.name);
+        errorLog(`getUserInfo: #1 ${e}`, getUserInfo.name);
     }
 
     return resultError(errorNames.userErrorList.onFindUserInfo, user);
@@ -124,7 +123,7 @@ export const updateOnlineTime = functions.https.onCall(
                 });
             return resultOk(null);
         } catch (e) {
-            errorLog(`_getUserInfo: #1 ${e}`, getUserInfo.name);
+            errorLog(`updateOnlineTime: #1 ${e}`, updateOnlineTime.name);
         }
 
         return resultError(errorNames.userErrorList.onFindUserInfo, null);
@@ -132,3 +131,124 @@ export const updateOnlineTime = functions.https.onCall(
 ); // updateOnlineTime()
 
 // ===== User : END
+
+// ===== List : START
+export const createList = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        listId: { type: "string", isRequirement: true, default: null },
+        name: { type: "string", isRequirement: true, default: null },
+        nextListId: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    try {
+        collection("lists").doc(data.listId).set({
+            name: data.name,
+            nextListId: data.nextListId,
+        });
+
+        return resultOk(data.listId);
+    } catch (e) {
+        errorLog(`createList: #1 ${e}`, createList.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // createList()
+
+interface UpdateListData {
+    id: string;
+    name: string;
+    nextListId: string;
+}
+export const updateBatchList = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        arrList: { type: "object", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const updateListData = data.arrList as UpdateListData[];
+    if (updateListData.length === 0) {
+        return resultOk();
+    }
+
+    try {
+        const batch = admin.firestore().batch();
+
+        updateListData.forEach((list) => {
+            batch.update(collection("lists").doc(list.id), {
+                name: list.name,
+                nextListId: list.nextListId,
+            });
+        });
+
+        batch.commit();
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`updateBatchList: #1 ${e}`, updateBatchList.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // updateBatchList()
+
+interface RemoveListData {
+    prevListId: string;
+    removeListId: string;
+    nextListId: string;
+}
+export const removeList = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        prevListId: { type: "string", isRequirement: true, default: null },
+        removeListId: { type: "string", isRequirement: true, default: null },
+        nextListId: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const removeListData = data as RemoveListData;
+
+    try {
+        const batch = admin.firestore().batch();
+
+        batch.update(collection("lists").doc(removeListData.prevListId), {
+            nextListId: removeListData.nextListId,
+        });
+
+        batch.delete(collection("lists").doc(removeListData.removeListId));
+
+        batch.commit();
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`removeList: #1 ${e}`, removeList.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // removeList()
+// ===== List : END
