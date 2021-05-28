@@ -377,3 +377,101 @@ export const removeCard = functions.https.onCall(async (data, context) => {
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // removeCard()
 // ===== Cards : END
+
+// ===== Messages : START
+export const createMessage = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        messageId: { type: "string", isRequirement: true, default: null },
+        content: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    try {
+        collection("messages").doc(data.messageId).collection("contents").add({
+            content: data.content,
+            timestamp: Date.now(),
+            uid: auth.uid,
+        });
+
+        return resultOk(data.cardId);
+    } catch (e) {
+        errorLog(`createMessage: #1 ${e}`, createMessage.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // createMessage()
+
+export const updateMessage = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        messageId: { type: "string", isRequirement: true, default: null },
+        contentId: { type: "string", isRequirement: true, default: null },
+        content: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    try {
+        collection("messages")
+            .doc(data.messageId)
+            .collection("contents")
+            .doc(data.contentId)
+            .update({
+                content: data.content,
+            });
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`updateMessage: #1 ${e}`, updateMessage.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // updateMessage()
+
+export const removeMessage = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        messageId: { type: "string", isRequirement: true, default: null },
+        contentId: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    try {
+        collection("messages")
+            .doc(data.messageId)
+            .collection("contents")
+            .doc(data.contentId)
+            .delete();
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`removeMessage: #1 ${e}`, removeMessage.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // removeMessage()
+// ===== Messages : END
