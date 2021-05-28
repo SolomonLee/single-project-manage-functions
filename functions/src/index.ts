@@ -57,8 +57,9 @@ export const onCreateUser = functions.auth.user().onCreate(async (user) => {
             successLog(`New User email: ${user.email}`, onCreateUser.name);
         });
 
-    collection("users-simple-infos").doc(user.uid).set({
+    collection("users-simple-infos").doc().set({
         name: name,
+        uid: user.uid,
         onlineTimestamp: Date.now(),
     });
 }); // onCreateUser()
@@ -271,6 +272,7 @@ export const createCard = functions.https.onCall(async (data, context) => {
 
         collection("cards").doc(data.cardId).set({
             content: "",
+            members: [],
             listId: data.listId,
             messageId: data.cardId,
             name: data.name,
@@ -333,6 +335,50 @@ export const updateBatchCard = functions.https.onCall(async (data, context) => {
 
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // updateBatchCard()
+
+interface CardMemberData {
+    /** card ID */
+    memberName: string;
+    uid: string;
+}
+
+interface UpdateCardMemberData {
+    /** card ID */
+    id: string;
+    cardMemberDatas: CardMemberData[];
+}
+export const updateCardMembers = functions.https.onCall(
+    async (data, context) => {
+        const auth = authVerification(context);
+
+        if (auth === false) {
+            return resultError(errorNames.authErrorList.unauthenticated, null);
+        }
+
+        const errorMsg = verificationDataFields(data, {
+            memberName: { type: "string", isRequirement: true, default: null },
+            uid: { type: "string", isRequirement: true, default: null },
+        });
+
+        if (errorMsg.length) {
+            return resultError(errorMsg);
+        }
+
+        const updateCardMemberData = data.arrList as UpdateCardMemberData;
+
+        try {
+            collection("cards").doc(updateCardMemberData.id).update({
+                members: updateCardMemberData.cardMemberDatas,
+            });
+
+            return resultOk("");
+        } catch (e) {
+            errorLog(`updateCardMembers: #1 ${e}`, updateCardMembers.name);
+        }
+
+        return resultError(errorNames.userErrorList.onFindUserInfo, "");
+    }
+); // updateCardMembers()
 
 interface RemoveCardData {
     prevCardId: string;
