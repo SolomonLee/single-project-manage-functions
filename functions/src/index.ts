@@ -252,3 +252,134 @@ export const removeList = functions.https.onCall(async (data, context) => {
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // removeList()
 // ===== List : END
+
+// ===== Cards : START
+export const createCard = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        cardId: { type: "string", isRequirement: true, default: null },
+        name: { type: "string", isRequirement: true, default: null },
+        listId: { type: "string", isRequirement: true, default: null },
+        nextCardId: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    try {
+        collection("messages").doc(data.cardId).set({});
+
+        collection("cards").doc(data.cardId).set({
+            content: "",
+            listId: data.listId,
+            messageId: data.cardId,
+            name: data.name,
+            nextCardId: data.nextCardId,
+        });
+
+        return resultOk(data.cardId);
+    } catch (e) {
+        errorLog(`createCard: #1 ${e}`, createCard.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // createCard()
+
+interface UpdateCardData {
+    id: string;
+    content: string;
+    listId: string;
+    name: string;
+    nextCardId: string;
+}
+export const updateBatchCard = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        arrList: { type: "object", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const updateCardData = data.arrList as UpdateCardData[];
+    if (updateCardData.length === 0) {
+        return resultOk();
+    }
+
+    try {
+        const batch = admin.firestore().batch();
+
+        updateCardData.forEach((card) => {
+            batch.update(collection("cards").doc(card.id), {
+                content: card.content,
+                listId: card.listId,
+                name: card.name,
+                nextCardId: card.nextCardId,
+            });
+        });
+
+        batch.commit();
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`updateBatchCard: #1 ${e}`, updateBatchCard.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // updateBatchCard()
+
+interface RemoveCardData {
+    prevCardId: string;
+    removeCardId: string;
+    nextCardId: string;
+}
+export const removeCard = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        prevCardId: { type: "string", isRequirement: true, default: null },
+        removeCardId: { type: "string", isRequirement: true, default: null },
+        nextCardId: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const removeCardData = data as RemoveCardData;
+
+    try {
+        const batch = admin.firestore().batch();
+
+        batch.update(collection("cards").doc(removeCardData.prevCardId), {
+            nextCardId: removeCardData.nextCardId,
+        });
+
+        batch.delete(collection("cards").doc(removeCardData.removeCardId));
+
+        batch.commit();
+
+        return resultOk("");
+    } catch (e) {
+        errorLog(`removeCard: #1 ${e}`, removeCard.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // removeCard()
+// ===== Cards : END
