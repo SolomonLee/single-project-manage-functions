@@ -240,9 +240,11 @@ export const removeList = functions.https.onCall(async (data, context) => {
     try {
         const batch = admin.firestore().batch();
 
-        batch.update(collection("lists").doc(removeListData.prevListId), {
-            nextListId: removeListData.nextListId,
-        });
+        if (removeListData.prevListId !== "") {
+            batch.update(collection("lists").doc(removeListData.prevListId), {
+                nextListId: removeListData.nextListId,
+            });
+        }
 
         batch.delete(collection("lists").doc(removeListData.removeListId));
 
@@ -433,9 +435,11 @@ export const removeCard = functions.https.onCall(async (data, context) => {
     try {
         const batch = admin.firestore().batch();
 
-        batch.update(collection("cards").doc(removeCardData.prevCardId), {
-            nextCardId: removeCardData.nextCardId,
-        });
+        if (removeCardData.prevCardId !== "") {
+            batch.update(collection("cards").doc(removeCardData.prevCardId), {
+                nextCardId: removeCardData.nextCardId,
+            });
+        }
 
         batch.delete(collection("cards").doc(removeCardData.removeCardId));
 
