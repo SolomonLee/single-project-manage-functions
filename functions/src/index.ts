@@ -146,12 +146,16 @@ export const createList = functions.https.onCall(async (data, context) => {
     }
 
     try {
-        collection("lists").doc(data.listId).set({
-            name: data.name,
-            nextListId: data.nextListId,
-        });
+        const result = await collection("lists")
+            .doc(data.listId)
+            .set({
+                name: data.name,
+                nextListId: data.nextListId,
+            })
+            .then(() => resultOk(data.listId))
+            .catch(() => resultError(""));
 
-        return resultOk(data.listId);
+        return result;
     } catch (e) {
         errorLog(`createList: #1 ${e}`, createList.name);
     }
@@ -194,9 +198,12 @@ export const updateBatchList = functions.https.onCall(async (data, context) => {
             });
         });
 
-        batch.commit();
+        const result = await batch
+            .commit()
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk("");
+        return result;
     } catch (e) {
         errorLog(`updateBatchList: #1 ${e}`, updateBatchList.name);
     }
@@ -208,6 +215,7 @@ interface RemoveListData {
     prevListId: string;
     removeListId: string;
     nextListId: string;
+    cardIds: string[];
 }
 export const removeList = functions.https.onCall(async (data, context) => {
     const auth = authVerification(context);
@@ -220,6 +228,7 @@ export const removeList = functions.https.onCall(async (data, context) => {
         prevListId: { type: "string", isRequirement: true, default: null },
         removeListId: { type: "string", isRequirement: true, default: null },
         nextListId: { type: "string", isRequirement: true, default: null },
+        cardIds: { type: "object", isRequirement: true, default: null },
     });
 
     if (errorMsg.length) {
@@ -237,9 +246,16 @@ export const removeList = functions.https.onCall(async (data, context) => {
 
         batch.delete(collection("lists").doc(removeListData.removeListId));
 
-        batch.commit();
+        removeListData.cardIds.forEach((cardId) => {
+            batch.delete(collection("cards").doc(cardId));
+        });
 
-        return resultOk("");
+        const result = await batch
+            .commit()
+            .then(() => resultOk())
+            .catch(() => resultError(""));
+
+        return result;
     } catch (e) {
         errorLog(`removeList: #1 ${e}`, removeList.name);
     }
@@ -268,9 +284,9 @@ export const createCard = functions.https.onCall(async (data, context) => {
     }
 
     try {
-        collection("messages").doc(data.cardId).set({});
+        const p1 = collection("messages").doc(data.cardId).set({});
 
-        collection("cards").doc(data.cardId).set({
+        const p2 = collection("cards").doc(data.cardId).set({
             content: "",
             members: [],
             listId: data.listId,
@@ -279,7 +295,11 @@ export const createCard = functions.https.onCall(async (data, context) => {
             nextCardId: data.nextCardId,
         });
 
-        return resultOk(data.cardId);
+        const result = await Promise.all([p1, p2])
+            .then(() => resultOk(data.cardId))
+            .catch(() => resultError(""));
+
+        return result;
     } catch (e) {
         errorLog(`createCard: #1 ${e}`, createCard.name);
     }
@@ -326,9 +346,12 @@ export const updateBatchCard = functions.https.onCall(async (data, context) => {
             });
         });
 
-        batch.commit();
+        const result = await batch
+            .commit()
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk("");
+        return result;
     } catch (e) {
         errorLog(`updateBatchCard: #1 ${e}`, updateBatchCard.name);
     }
@@ -356,8 +379,7 @@ export const updateCardMembers = functions.https.onCall(
         }
 
         const errorMsg = verificationDataFields(data, {
-            memberName: { type: "string", isRequirement: true, default: null },
-            uid: { type: "string", isRequirement: true, default: null },
+            arrList: { type: "object", isRequirement: true, default: null },
         });
 
         if (errorMsg.length) {
@@ -367,11 +389,15 @@ export const updateCardMembers = functions.https.onCall(
         const updateCardMemberData = data.arrList as UpdateCardMemberData;
 
         try {
-            collection("cards").doc(updateCardMemberData.id).update({
-                members: updateCardMemberData.cardMemberDatas,
-            });
+            const result = await collection("cards")
+                .doc(updateCardMemberData.id)
+                .update({
+                    members: updateCardMemberData.cardMemberDatas,
+                })
+                .then(() => resultOk(""))
+                .catch(() => resultError(""));
 
-            return resultOk("");
+            return result;
         } catch (e) {
             errorLog(`updateCardMembers: #1 ${e}`, updateCardMembers.name);
         }
@@ -413,9 +439,12 @@ export const removeCard = functions.https.onCall(async (data, context) => {
 
         batch.delete(collection("cards").doc(removeCardData.removeCardId));
 
-        batch.commit();
+        const result = await batch
+            .commit()
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk("");
+        return result;
     } catch (e) {
         errorLog(`removeCard: #1 ${e}`, removeCard.name);
     }
@@ -442,13 +471,18 @@ export const createMessage = functions.https.onCall(async (data, context) => {
     }
 
     try {
-        collection("messages").doc(data.messageId).collection("contents").add({
-            content: data.content,
-            timestamp: Date.now(),
-            uid: auth.uid,
-        });
+        const result = await collection("messages")
+            .doc(data.messageId)
+            .collection("contents")
+            .add({
+                content: data.content,
+                timestamp: Date.now(),
+                uid: auth.uid,
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk(data.cardId);
+        return result;
     } catch (e) {
         errorLog(`createMessage: #1 ${e}`, createMessage.name);
     }
@@ -474,15 +508,17 @@ export const updateMessage = functions.https.onCall(async (data, context) => {
     }
 
     try {
-        collection("messages")
+        const result = await collection("messages")
             .doc(data.messageId)
             .collection("contents")
             .doc(data.contentId)
             .update({
                 content: data.content,
-            });
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk("");
+        return result;
     } catch (e) {
         errorLog(`updateMessage: #1 ${e}`, updateMessage.name);
     }
@@ -507,13 +543,15 @@ export const removeMessage = functions.https.onCall(async (data, context) => {
     }
 
     try {
-        collection("messages")
+        const result = await collection("messages")
             .doc(data.messageId)
             .collection("contents")
             .doc(data.contentId)
-            .delete();
+            .delete()
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
 
-        return resultOk("");
+        return result;
     } catch (e) {
         errorLog(`removeMessage: #1 ${e}`, removeMessage.name);
     }
