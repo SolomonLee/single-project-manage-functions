@@ -248,10 +248,32 @@ export const removeList = functions.https.onCall(async (data, context) => {
 
         batch.delete(collection("lists").doc(removeListData.removeListId));
 
+        const removeCardMemberPromiseArr = [] as Promise<unknown>[];
         removeListData.cardIds.forEach((cardId) => {
+            removeCardMemberPromiseArr.push(
+                collection("cards")
+                    .doc(cardId)
+                    .collection("members")
+                    .get()
+                    .then((snapshot) => {
+                        snapshot.docs.forEach((doc) => {
+                            if (doc.exists) {
+                                batch.delete(
+                                    collection("cards")
+                                        .doc(cardId)
+                                        .collection("members")
+                                        .doc(doc.id)
+                                );
+                            }
+                        });
+                    })
+            );
+
             batch.delete(collection("cards").doc(cardId));
             batch.delete(collection("message").doc(cardId));
         });
+
+        await Promise.all(removeCardMemberPromiseArr);
 
         const result = await batch
             .commit()
@@ -404,14 +426,14 @@ export const updateCard = functions.https.onCall(async (data, context) => {
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // updateBatchCard()
 
-interface CardMember extends CardMemberBasic {
-    memberName: string;
-}
 interface CardMemberBasic {
     /** card ID */
     id: string;
     /** user ID */
     uid: string;
+}
+interface CardMember extends CardMemberBasic {
+    memberName: string;
 }
 interface CardMemberOnSnapshotData {
     memberName: string;
@@ -419,15 +441,15 @@ interface CardMemberOnSnapshotData {
 }
 export const addCardMember = functions.https.onCall(async (data, context) => {
     const auth = authVerification(context);
-
+    console.log("addCardMember #1");
     if (auth === false) {
         return resultError(errorNames.authErrorList.unauthenticated, null);
     }
 
     const errorMsg = verificationDataFields(data, {
-        id: { type: "object", isRequirement: true, default: null },
-        uid: { type: "object", isRequirement: true, default: null },
-        memberName: { type: "object", isRequirement: true, default: null },
+        id: { type: "string", isRequirement: true, default: null },
+        uid: { type: "string", isRequirement: true, default: null },
+        memberName: { type: "string", isRequirement: true, default: null },
     });
 
     if (errorMsg.length) {
@@ -498,8 +520,8 @@ export const removeCardMember = functions.https.onCall(
         }
 
         const errorMsg = verificationDataFields(data, {
-            id: { type: "object", isRequirement: true, default: null },
-            uid: { type: "object", isRequirement: true, default: null },
+            id: { type: "string", isRequirement: true, default: null },
+            uid: { type: "string", isRequirement: true, default: null },
         });
 
         if (errorMsg.length) {
@@ -597,6 +619,23 @@ export const removeCard = functions.https.onCall(async (data, context) => {
 
         batch.delete(collection("message").doc(removeCardData.removeCardId));
 
+        await collection("cards")
+            .doc(removeCardData.removeCardId)
+            .collection("members")
+            .get()
+            .then((snapshot) => {
+                snapshot.docs.forEach((doc) => {
+                    if (doc.exists) {
+                        batch.delete(
+                            collection("cards")
+                                .doc(removeCardData.removeCardId)
+                                .collection("members")
+                                .doc(doc.id)
+                        );
+                    }
+                });
+            });
+
         const result = await batch
             .commit()
             .then(() => resultOk(""))
@@ -621,6 +660,7 @@ export const createMessage = functions.https.onCall(async (data, context) => {
 
     const errorMsg = verificationDataFields(data, {
         messageId: { type: "string", isRequirement: true, default: null },
+        contentId: { type: "string", isRequirement: true, default: null },
         content: { type: "string", isRequirement: true, default: null },
     });
 
@@ -632,7 +672,8 @@ export const createMessage = functions.https.onCall(async (data, context) => {
         const result = await collection("messages")
             .doc(data.messageId)
             .collection("contents")
-            .add({
+            .doc(data.contentId)
+            .set({
                 content: data.content,
                 timestamp: Date.now(),
                 uid: auth.uid,
