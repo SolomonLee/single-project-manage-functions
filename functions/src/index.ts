@@ -57,7 +57,7 @@ export const onCreateUser = functions.auth.user().onCreate(async (user) => {
             successLog(`New User email: ${user.email}`, onCreateUser.name);
         });
 
-    collection("users-simple-infos").doc().set({
+    collection("users-simple-infos").doc(user.uid).set({
         name: name,
         uid: user.uid,
         onlineTimestamp: Date.now(),
@@ -269,8 +269,27 @@ export const removeList = functions.https.onCall(async (data, context) => {
                     })
             );
 
+            removeCardMemberPromiseArr.push(
+                collection("messages")
+                    .doc(cardId)
+                    .collection("contents")
+                    .get()
+                    .then((snapshot) => {
+                        snapshot.docs.forEach((doc) => {
+                            if (doc.exists) {
+                                batch.delete(
+                                    collection("messages")
+                                        .doc(cardId)
+                                        .collection("contents")
+                                        .doc(doc.id)
+                                );
+                            }
+                        });
+                    })
+            );
+
             batch.delete(collection("cards").doc(cardId));
-            batch.delete(collection("message").doc(cardId));
+            batch.delete(collection("messages").doc(cardId));
         });
 
         await Promise.all(removeCardMemberPromiseArr);
@@ -615,11 +634,7 @@ export const removeCard = functions.https.onCall(async (data, context) => {
             });
         }
 
-        batch.delete(collection("cards").doc(removeCardData.removeCardId));
-
-        batch.delete(collection("message").doc(removeCardData.removeCardId));
-
-        await collection("cards")
+        const p1 = collection("cards")
             .doc(removeCardData.removeCardId)
             .collection("members")
             .get()
@@ -635,6 +650,29 @@ export const removeCard = functions.https.onCall(async (data, context) => {
                     }
                 });
             });
+
+        const p2 = collection("messages")
+            .doc(removeCardData.removeCardId)
+            .collection("contents")
+            .get()
+            .then((snapshot) => {
+                snapshot.docs.forEach((doc) => {
+                    if (doc.exists) {
+                        batch.delete(
+                            collection("messages")
+                                .doc(removeCardData.removeCardId)
+                                .collection("contents")
+                                .doc(doc.id)
+                        );
+                    }
+                });
+            });
+
+        await Promise.all([p1, p2]);
+
+        batch.delete(collection("cards").doc(removeCardData.removeCardId));
+
+        batch.delete(collection("messages").doc(removeCardData.removeCardId));
 
         const result = await batch
             .commit()
