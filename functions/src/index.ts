@@ -250,6 +250,7 @@ export const removeList = functions.https.onCall(async (data, context) => {
 
         removeListData.cardIds.forEach((cardId) => {
             batch.delete(collection("cards").doc(cardId));
+            batch.delete(collection("message").doc(cardId));
         });
 
         const result = await batch
@@ -309,7 +310,7 @@ export const createCard = functions.https.onCall(async (data, context) => {
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // createCard()
 
-interface UpdateCardData {
+interface UpdateBatchCardData {
     id: string;
     content: string;
     listId: string;
@@ -331,7 +332,7 @@ export const updateBatchCard = functions.https.onCall(async (data, context) => {
         return resultError(errorMsg);
     }
 
-    const updateCardData = data.arrList as UpdateCardData[];
+    const updateCardData = data.arrList as UpdateBatchCardData[];
     if (updateCardData.length === 0) {
         return resultOk();
     }
@@ -361,18 +362,134 @@ export const updateBatchCard = functions.https.onCall(async (data, context) => {
     return resultError(errorNames.userErrorList.onFindUserInfo, "");
 }); // updateBatchCard()
 
-interface CardMemberData {
+interface UpdateCardData {
+    id: string;
+    content: string;
+    name: string;
+}
+export const updateCard = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
+
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        id: { type: "string", isRequirement: true, default: null },
+        content: { type: "string", isRequirement: true, default: null },
+        name: { type: "string", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const updateCardData = data as UpdateCardData;
+    try {
+        const result = await collection("cards")
+            .doc(updateCardData.id)
+            .update({
+                id: updateCardData.id,
+                content: updateCardData.content,
+                name: updateCardData.name,
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
+
+        return result;
+    } catch (e) {
+        errorLog(`updateBatchCard: #1 ${e}`, updateBatchCard.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // updateBatchCard()
+
+interface CardMember extends CardMemberBasic {
+    memberName: string;
+}
+interface CardMemberBasic {
     /** card ID */
+    id: string;
+    /** user ID */
+    uid: string;
+}
+interface CardMemberOnSnapshotData {
     memberName: string;
     uid: string;
 }
+export const addCardMember = functions.https.onCall(async (data, context) => {
+    const auth = authVerification(context);
 
-interface UpdateCardMemberData {
-    /** card ID */
-    id: string;
-    cardMemberDatas: CardMemberData[];
-}
-export const updateCardMembers = functions.https.onCall(
+    if (auth === false) {
+        return resultError(errorNames.authErrorList.unauthenticated, null);
+    }
+
+    const errorMsg = verificationDataFields(data, {
+        id: { type: "object", isRequirement: true, default: null },
+        uid: { type: "object", isRequirement: true, default: null },
+        memberName: { type: "object", isRequirement: true, default: null },
+    });
+
+    if (errorMsg.length) {
+        return resultError(errorMsg);
+    }
+
+    const addCardMemberData = data as CardMember;
+
+    try {
+        let result = await collection("cards")
+            .doc(addCardMemberData.id)
+            .collection("members")
+            .doc(addCardMemberData.uid)
+            .set({
+                memberName: addCardMemberData.memberName,
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
+
+        if (!result.result) {
+            return result;
+        }
+
+        const members = [] as CardMemberOnSnapshotData[];
+        result = await collection("cards")
+            .doc(addCardMemberData.id)
+            .collection("members")
+            .get()
+            .then((snapshot) => {
+                snapshot.docs.forEach((doc) => {
+                    if (doc.exists) {
+                        members.push({
+                            memberName: doc.data().memberName,
+                            uid: doc.id,
+                        });
+                    }
+                });
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
+
+        if (!result.result) {
+            return result;
+        }
+
+        result = await collection("cards")
+            .doc(addCardMemberData.id)
+            .update({
+                members,
+            })
+            .then(() => resultOk(""))
+            .catch(() => resultError(""));
+
+        return result;
+    } catch (e) {
+        errorLog(`addCardMember: #1 ${e}`, addCardMember.name);
+    }
+
+    return resultError(errorNames.userErrorList.onFindUserInfo, "");
+}); // addCardMember()
+
+export const removeCardMember = functions.https.onCall(
     async (data, context) => {
         const auth = authVerification(context);
 
@@ -381,32 +498,67 @@ export const updateCardMembers = functions.https.onCall(
         }
 
         const errorMsg = verificationDataFields(data, {
-            arrList: { type: "object", isRequirement: true, default: null },
+            id: { type: "object", isRequirement: true, default: null },
+            uid: { type: "object", isRequirement: true, default: null },
         });
 
         if (errorMsg.length) {
             return resultError(errorMsg);
         }
 
-        const updateCardMemberData = data.arrList as UpdateCardMemberData;
+        const addCardMemberData = data as CardMemberBasic;
 
         try {
-            const result = await collection("cards")
-                .doc(updateCardMemberData.id)
+            let result = await collection("cards")
+                .doc(addCardMemberData.id)
+                .collection("members")
+                .doc(addCardMemberData.uid)
+                .delete()
+                .then(() => resultOk(""))
+                .catch(() => resultError(""));
+
+            if (!result.result) {
+                return result;
+            }
+
+            const members = [] as CardMemberOnSnapshotData[];
+            result = await collection("cards")
+                .doc(addCardMemberData.id)
+                .collection("members")
+                .get()
+                .then((snapshot) => {
+                    snapshot.docs.forEach((doc) => {
+                        if (doc.exists) {
+                            members.push({
+                                memberName: doc.data().memberName,
+                                uid: doc.id,
+                            });
+                        }
+                    });
+                })
+                .then(() => resultOk(""))
+                .catch(() => resultError(""));
+
+            if (!result.result) {
+                return result;
+            }
+
+            result = await collection("cards")
+                .doc(addCardMemberData.id)
                 .update({
-                    members: updateCardMemberData.cardMemberDatas,
+                    members,
                 })
                 .then(() => resultOk(""))
                 .catch(() => resultError(""));
 
             return result;
         } catch (e) {
-            errorLog(`updateCardMembers: #1 ${e}`, updateCardMembers.name);
+            errorLog(`removeCardMember: #1 ${e}`, removeCardMember.name);
         }
 
         return resultError(errorNames.userErrorList.onFindUserInfo, "");
     }
-); // updateCardMembers()
+); // removeCardMember()
 
 interface RemoveCardData {
     prevCardId: string;
@@ -442,6 +594,8 @@ export const removeCard = functions.https.onCall(async (data, context) => {
         }
 
         batch.delete(collection("cards").doc(removeCardData.removeCardId));
+
+        batch.delete(collection("message").doc(removeCardData.removeCardId));
 
         const result = await batch
             .commit()
